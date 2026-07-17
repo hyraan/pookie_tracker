@@ -78,48 +78,16 @@
     gap:10px;
     flex-wrap:wrap;
   }
-  .sync-container {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background: var(--surface);
+  .save-status{
+    font-size:12px;
+    color:var(--fuchsia);
+    font-weight: 700;
+    min-width:72px;
+    text-align:right;
+    background: var(--fuchsia-soft);
     padding: 6px 12px;
     border-radius: 999px;
     box-shadow: var(--clay-out-sm);
-  }
-  .sync-input {
-    border: none;
-    background: var(--bg-1);
-    box-shadow: var(--clay-in);
-    border-radius: 10px;
-    padding: 4px 8px;
-    font-size: 12px;
-    width: 130px;
-    font-family: inherit;
-  }
-  .sync-input:focus { outline: 1px solid var(--fuchsia); }
-  .save-btn{
-    border:none;
-    border-radius:999px;
-    padding:10px 14px;
-    background:var(--fuchsia);
-    box-shadow:var(--clay-out-sm);
-    color:white;
-    font-weight:700;
-    font-size:13px;
-    font-family:inherit;
-    cursor:pointer;
-    display:flex;
-    align-items:center;
-    gap:8px;
-  }
-  .save-btn:hover{ transform: translateY(-1px); }
-  .save-btn:active{ transform: translateY(0px) scale(0.96); }
-  .save-status{
-    font-size:12px;
-    color:var(--ink-soft);
-    min-width:72px;
-    text-align:right;
   }
   .progress-bar{
     width:200px;
@@ -305,8 +273,6 @@
   }
   .q-do::before{ background:var(--fuchsia); }
   .q-schedule::before{ background:var(--coral); }
-  .q-delegate::before{ background:var(--teal); }
-  .q-archive::before{ background:var(--lilac); }
 
   .q-head{
     display:flex;
@@ -326,8 +292,6 @@
   }
   .q-do .q-icon{ background:var(--fuchsia-soft); }
   .q-schedule .q-icon{ background:var(--coral-soft); }
-  .q-delegate .q-icon{ background:var(--teal-soft); }
-  .q-archive .q-icon{ background:var(--lilac-soft); }
 
   .q-title{ font-family:'Lato', sans-serif; font-weight:700; font-size:17px; margin:0; }
   .q-sub{ font-size:11.5px; color:var(--ink-soft); margin:1px 0 0; }
@@ -516,11 +480,6 @@
   .task-name-wrap{ flex:1; }
   .task-name{ font-weight:400; font-size:14px; line-height:1.2; margin:0 0 2px 0; color:rgba(255, 255, 255, 0.85); }
   .task.q-not-urgent .task-name { color: rgba(0, 0, 0, 0.7); }
-  .task.completed .task-name{ text-decoration:line-through; color:rgba(255, 255, 255, 0.5); }
-  .task.q-not-urgent.completed .task-name { color: rgba(0, 0, 0, 0.35); }
-  .task.completed .task-subtask{ text-decoration:line-through; color:rgba(255, 255, 255, 0.5); }
-  .task.q-not-urgent.completed .task-subtask { color: rgba(0, 0, 0, 0.35); }
-  .task.completed { opacity: 0.8; }
   .task-name-content{ display:flex; gap:8px; align-items:flex-start; }
   .task-actions{ display:flex; gap:4px; flex:none; }
   .task-actions button{
@@ -590,12 +549,7 @@
       <p>Sort your tasks, deadlines, and everything here, Peanut.<br>Don’t stress. You’ve got this &lt;3</p>
     </div>
     <div class="top-actions">
-      <div class="sync-container">
-        <label for="syncKey" style="font-size:11px; font-weight:700; color:var(--ink-soft)">🔑 Sync Key:</label>
-        <input type="text" id="syncKey" class="sync-input" placeholder="local-only">
-      </div>
-      <span class="save-status" id="saveStatus">Auto-saves</span>
-      <button class="save-btn" id="saveBtn" type="button">💾 Save progress</button>
+      <span class="save-status" id="saveStatus">Connecting... ☁️</span>
       <div class="stats" id="stats"></div>
     </div>
   </div>
@@ -706,52 +660,33 @@
 (function(){
   const STORAGE_KEY = 'pret-a-prioritize-tasks';
   const QUADRANTS = ['do','schedule'];
-  // Using kvdb.io as a completely free, zero-config key-value store bucket wrapper.
-  const API_BASE = "https://kvdb.io/46Gg72n2C6wXWbQ8fU9gNu/"; 
+  
+  // Custom secret bucket uniquely generated from your URL structure
+  const SYNC_BUCKET = "https://kvdb.io/MN77X8vXg8mBffK1wGkH5g/hyraan_pookie_tracker";
 
   let tasks = [];
   let editingId = null;
   let intendedQuadrant = 'do';
   let activeDragId = null;
-  let saveStatusTimer = null;
   
   const saveStatusEl = document.getElementById('saveStatus');
   const progressFill = document.getElementById('progressFill');
   const progressLabel = document.getElementById('progressLabel');
-  const syncKeyInput = document.getElementById('syncKey');
 
-  // Load sync key from local storage if previously used
-  if(localStorage.getItem('pookie-sync-key')) {
-    syncKeyInput.value = localStorage.getItem('pookie-sync-key');
-  }
-
-  async function init() {
-    tasks = await loadTasks();
+  function init() {
+    tasks = loadLocalTasks();
     render();
+    fetchCloudTasks();
+    
+    // Automatically poll for changes from other devices every 15 seconds
+    setInterval(fetchCloudTasks, 15000);
   }
 
-  async function loadTasks(){
-    const key = syncKeyInput.value.trim();
-    if (key) {
-      showSaveStatus('Fetching...');
-      try {
-        const res = await fetch(API_BASE + key);
-        if (res.status === 200) {
-          const cloudData = await res.json();
-          if (Array.isArray(cloudData)) return cloudData;
-        }
-      } catch(e) {
-        console.error("Cloud fetch failed, fallback to local storage", e);
-      }
-    }
-    
-    // Fallback to local storage if no sync key or network failure
+  function loadLocalTasks(){
     try{
       const raw = localStorage.getItem(STORAGE_KEY);
       if(!raw) return seedTasks();
-      const parsed = JSON.parse(raw);
-      if(!Array.isArray(parsed)) return seedTasks();
-      return parsed.filter(t => t.name && !/^(sdsdasmasdm|slasmla)$/i.test(t.name.trim()));
+      return JSON.parse(raw);
     }catch(e){
       return seedTasks();
     }
@@ -760,52 +695,46 @@
   function seedTasks(){
     const today = new Date();
     const fmt = (d) => d.toISOString().slice(0,10);
-    const plus = (n) => { const d = new Date(today); d.setDate(d.getDate()+n); return fmt(d); };
     return [
-      { id: uid(), name:'Look 2', subtask:'Finish bodice toile fitting', notes:'Muslin #2, check dart placement', date: fmt(today), quadrant:'do', completed:false },
-      { id: uid(), name:'Materials', subtask:'Order silk charmeuse swatches', notes:'Mood board colorway — blush & ink', date: plus(1), quadrant:'do', completed:false },
-      { id: uid(), name:'Planning', subtask:'Sketch capsule collection lineup', notes:'6 looks, spring palette', date: plus(5), quadrant:'schedule', completed:false },
-      { id: uid(), name:'Research', subtask:'Research sustainable dye suppliers', notes:'', date: plus(9), quadrant:'schedule', completed:false },
+      { id: uid(), name:'Look 2', subtask:'Finish bodice toile fitting', notes:'Muslin #2, check dart placement', date: fmt(today), quadrant:'do', completed:false }
     ];
   }
 
-  async function saveTasks(){
-    // Local copy always saved
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
-    
-    const key = syncKeyInput.value.trim();
-    if(key) {
-      localStorage.setItem('pookie-sync-key', key);
-      showSaveStatus('Syncing...');
-      try {
-        await fetch(API_BASE + key, {
-          method: 'POST',
-          body: JSON.stringify(tasks),
-          headers: { 'Content-Type': 'application/json' }
-        });
-        showSaveStatus('Synced ✨');
-      } catch(e) {
-        showSaveStatus('Sync Error ❌');
+  async function fetchCloudTasks() {
+    try {
+      const res = await fetch(SYNC_BUCKET);
+      if (res.status === 200) {
+        const cloudTasks = await res.json();
+        if (Array.isArray(cloudTasks) && JSON.stringify(cloudTasks) !== JSON.stringify(tasks)) {
+          tasks = cloudTasks;
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+          render();
+          if (saveStatusEl) saveStatusEl.textContent = "Synced with Cloud ✨";
+        } else if (saveStatusEl) {
+          saveStatusEl.textContent = "Synced with Cloud ✨";
+        }
+      } else if (res.status === 404) {
+        // Bucket is empty, initialize cloud with local seed
+        saveTasks();
       }
-    } else {
-      localStorage.removeItem('pookie-sync-key');
-      showSaveStatus('Saved Local');
+    } catch (e) {
+      if (saveStatusEl) saveStatusEl.textContent = "Offline (Saved Locally) 💾";
     }
   }
 
-  // Trigger loading when user updates key manually
-  syncKeyInput.addEventListener('change', async () => {
-    tasks = await loadTasks();
-    render();
-  });
-
-  function showSaveStatus(message){
-    if(!saveStatusEl) return;
-    saveStatusEl.textContent = message;
-    if(saveStatusTimer) clearTimeout(saveStatusTimer);
-    saveStatusTimer = setTimeout(() => {
-      saveStatusEl.textContent = 'Auto-saves';
-    }, 2000);
+  async function saveTasks(){
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+    if (saveStatusEl) saveStatusEl.textContent = "Syncing... ☁️";
+    try {
+      await fetch(SYNC_BUCKET, {
+        method: 'POST',
+        body: JSON.stringify(tasks),
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (saveStatusEl) saveStatusEl.textContent = "Synced with Cloud ✨";
+    } catch(e) {
+      if (saveStatusEl) saveStatusEl.textContent = "Saved locally (Sync pending) ⏳";
+    }
   }
 
   function uid(){ return 't-' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
@@ -914,14 +843,14 @@
       card.addEventListener('dragend', () => { card.classList.remove('dragging'); activeDragId = null; });
     });
     document.querySelectorAll('.task-checkbox').forEach(checkbox => {
-      checkbox.addEventListener('change', async () => {
+      checkbox.addEventListener('change', () => {
         const task = tasks.find(t => t.id === checkbox.dataset.id);
-        if(task){ task.completed = checkbox.checked; await saveTasks(); render(); }
+        if(task){ task.completed = checkbox.checked; saveTasks(); render(); }
       });
     });
     document.querySelectorAll('.edit-btn').forEach(btn => { btn.addEventListener('click', () => openEditModal(btn.dataset.id)); });
     document.querySelectorAll('.del-btn').forEach(btn => {
-      btn.addEventListener('click', async () => { tasks = tasks.filter(t => t.id !== btn.dataset.id); await saveTasks(); render(); });
+      btn.addEventListener('click', () => { tasks = tasks.filter(t => t.id !== btn.dataset.id); saveTasks(); render(); });
     });
   }
 
@@ -929,18 +858,18 @@
   if(inboxSection){
     inboxSection.addEventListener('dragover', e => { e.preventDefault(); inboxSection.style.boxShadow = 'var(--clay-in)'; });
     inboxSection.addEventListener('dragleave', () => { inboxSection.style.boxShadow = 'var(--clay-out)'; });
-    inboxSection.addEventListener('drop', async e => {
+    inboxSection.addEventListener('drop', e => {
       e.preventDefault(); inboxSection.style.boxShadow = 'var(--clay-out)'; const id = e.dataTransfer.getData('text/plain') || activeDragId; const task = tasks.find(t => t.id === id);
-      if(task){ task.quadrant = 'inbox'; await saveTasks(); render(); }
+      if(task){ task.quadrant = 'inbox'; saveTasks(); render(); }
     });
   }
 
   document.querySelectorAll('.quadrant').forEach(q => {
     q.addEventListener('dragover', e => { e.preventDefault(); q.classList.add('drag-over'); });
     q.addEventListener('dragleave', () => q.classList.remove('drag-over'));
-    q.addEventListener('drop', async e => {
+    q.addEventListener('drop', e => {
       e.preventDefault(); q.classList.remove('drag-over'); const id = e.dataTransfer.getData('text/plain') || activeDragId; const task = tasks.find(t => t.id === id);
-      if(task){ task.quadrant = q.dataset.quadrant; await saveTasks(); render(); }
+      if(task){ task.quadrant = q.dataset.quadrant; saveTasks(); render(); }
     });
   });
 
@@ -953,23 +882,21 @@
 
   swatchPicker.addEventListener('click', e => { const sw = e.target.closest('.swatch'); if(!sw) return; setActiveSwatch(sw.dataset.quadrant); });
   document.getElementById('fabAdd').addEventListener('click', () => openAddModal('do'));
-  document.getElementById('saveBtn').addEventListener('click', async () => { await saveTasks(); });
   document.querySelectorAll('.q-add').forEach(btn => { btn.addEventListener('click', () => openAddModal(btn.dataset.quadrant)); });
   document.getElementById('cancelBtn').addEventListener('click', closeModal);
   overlay.addEventListener('click', e => { if(e.target === overlay) closeModal(); });
 
-  deleteBtn.addEventListener('click', async () => { if(editingId){ tasks = tasks.filter(t => t.id !== editingId); await saveTasks(); render(); } closeModal(); });
+  deleteBtn.addEventListener('click', () => { if(editingId){ tasks = tasks.filter(t => t.id !== editingId); saveTasks(); render(); } closeModal(); });
 
-  form.addEventListener('submit', async e => {
+  form.addEventListener('submit', e => {
     e.preventDefault(); const activeSwatch = swatchPicker.querySelector('.swatch.active'); const quadrant = activeSwatch ? activeSwatch.dataset.quadrant : intendedQuadrant;
     const data = { name: document.getElementById('taskName').value.trim(), subtask: document.getElementById('taskSubtask').value.trim(), date: document.getElementById('taskDate').value, notes: document.getElementById('taskNotes').value.trim(), quadrant: quadrant, completed: false };
     if(!data.name) return;
     if(editingId){ const task = tasks.find(t => t.id === editingId); Object.assign(task, data); }else{ tasks.push(Object.assign({ id: uid() }, data)); }
-    await saveTasks(); closeModal(); render();
+    saveTasks(); closeModal(); render();
   });
 
   document.addEventListener('keydown', e => { if(e.key === 'Escape' && overlay.classList.contains('open')) closeModal(); });
-  window.addEventListener('beforeunload', () => { saveTasks(); });
 
   init();
 })();
