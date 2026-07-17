@@ -6,6 +6,8 @@
   <title>Pookie Planner</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<!-- Include the Supabase CDN Library -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{
     --bg-1:#f5f3ff;
@@ -626,7 +628,7 @@
         <input type="hidden" id="taskId">
         <div class="field">
           <label for="taskName">Task</label>
-          <input type="text" id="taskName" required>
+          <input type="text" id="taskName">
         </div>
         <div class="field">
           <label for="taskSubtask">Subtask</label>
@@ -658,11 +660,12 @@
 
 <script>
 (function(){
-  const STORAGE_KEY = 'pret-a-prioritize-tasks';
-  const QUADRANTS = ['do','schedule'];
+  // --- PASTE YOUR SUPABASE PROJECT CONFIG HERE ---
+  const SUPABASE_URL = "https://yjbpqeevltnheqstkzxd.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlqYnBxZWV2bHRuaGVxc3RrenhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyOTc4NDgsImV4cCI6MjA5OTg3Mzg0OH0.0p9EFM-puG4VX4iW_v8k_JV6GGZP1khnj9-NFJ9Lz1Y";
   
-  // Custom secret bucket uniquely generated from your URL structure
-  const SYNC_BUCKET = "https://kvdb.io/MN77X8vXg8mBffK1wGkH5g/hyraan_pookie_tracker";
+  const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const QUADRANTS = ['do','schedule'];
 
   let tasks = [];
   let editingId = null;
@@ -673,73 +676,55 @@
   const progressFill = document.getElementById('progressFill');
   const progressLabel = document.getElementById('progressLabel');
 
-  function init() {
-    tasks = loadLocalTasks();
-    render();
-    fetchCloudTasks();
-    
-    // Automatically poll for changes from other devices every 15 seconds
-    setInterval(fetchCloudTasks, 15000);
+  async function init() {
+    await fetchCloudTasks();
+    // Live update tracking from other browsers every 5 seconds
+    setInterval(fetchCloudTasks, 5000);
   }
 
-  function loadLocalTasks(){
-    try{
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if(!raw) return seedTasks();
-      return JSON.parse(raw);
-    }catch(e){
-      return seedTasks();
-    }
-  }
-
-  function seedTasks(){
-    const today = new Date();
-    const fmt = (d) => d.toISOString().slice(0,10);
-    return [
-      { id: uid(), name:'Look 2', subtask:'Finish bodice toile fitting', notes:'Muslin #2, check dart placement', date: fmt(today), quadrant:'do', completed:false }
-    ];
-  }
-
+  // Fetch tasks out of the database table
   async function fetchCloudTasks() {
     try {
-      const res = await fetch(SYNC_BUCKET);
-      if (res.status === 200) {
-        const cloudTasks = await res.json();
-        if (Array.isArray(cloudTasks) && JSON.stringify(cloudTasks) !== JSON.stringify(tasks)) {
-          tasks = cloudTasks;
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
-          render();
-          if (saveStatusEl) saveStatusEl.textContent = "Synced with Cloud ✨";
-        } else if (saveStatusEl) {
-          saveStatusEl.textContent = "Synced with Cloud ✨";
+      const { data, error } = await _supabase
+        .from('tasks')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      // Transform db table schema fields back to local application keys
+      tasks = data.map(t => ({
+        id: t.id,
+        subtask: t.title,
+        quadrant: t.category,
+        name: t.description,
+        date: t.due_date,
+        completed: t.is_completed,
+        notes: t.description ? "" : "" 
+      }));
+
+      // Hack to extract the optional custom notes if embedded inside description text safely
+      tasks.forEach((t, idx) => {
+        if(data[idx].description && data[idx].description.includes("||NOTES||")) {
+          const parts = data[idx].description.split("||NOTES||");
+          t.name = parts[0];
+          t.notes = parts[1];
+        } else {
+          t.name = data[idx].description || "";
+          t.notes = "";
         }
-      } else if (res.status === 404) {
-        // Bucket is empty, initialize cloud with local seed
-        saveTasks();
-      }
-    } catch (e) {
-      if (saveStatusEl) saveStatusEl.textContent = "Offline (Saved Locally) 💾";
-    }
-  }
-
-  async function saveTasks(){
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
-    if (saveStatusEl) saveStatusEl.textContent = "Syncing... ☁️";
-    try {
-      await fetch(SYNC_BUCKET, {
-        method: 'POST',
-        body: JSON.stringify(tasks),
-        headers: { 'Content-Type': 'application/json' }
       });
-      if (saveStatusEl) saveStatusEl.textContent = "Synced with Cloud ✨";
-    } catch(e) {
-      if (saveStatusEl) saveStatusEl.textContent = "Saved locally (Sync pending) ⏳";
+
+      render();
+      if (saveStatusEl) saveStatusEl.textContent = "Live Cloud Synced ✨";
+    } catch (e) {
+      console.error(e);
+      if (saveStatusEl) saveStatusEl.textContent = "Cloud Offline 🖥️";
     }
   }
 
-  function uid(){ return 't-' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
-  function getDeadline(task){ if(!task.date) return null; return new Date(task.date + 'T' + (task.time || '23:59')); }
-  function formatDeadline(task){ const dl = getDeadline(task); if(!dl) return null; const opts = { month:'short', day:'numeric' }; let str = dl.toLocaleDateString(undefined, opts); if(task.time) str += ', ' + dl.toLocaleTimeString(undefined, { hour:'numeric', minute:'2-digit' }); return str; }
+  function getDeadline(task){ if(!task.date) return null; return new Date(task.date + 'T23:59:59'); }
+  function formatDeadline(task){ const dl = getDeadline(task); if(!dl) return null; return dl.toLocaleDateString(undefined, { month:'short', day:'numeric' }); }
   function deadlineStatus(task){ const dl = getDeadline(task); if(!dl) return 'none'; const now = new Date(); if(dl < now) return 'overdue'; const oneDay = 24*60*60*1000; if(dl - now < oneDay) return 'today'; return 'upcoming'; }
 
   function render(){
@@ -831,7 +816,7 @@
     }
     calendarGridEl.innerHTML = html;
     const monthTasks = Object.entries(dateTasks).filter(([date]) => { const d = new Date(date + 'T00:00'); return d.getFullYear() === year && d.getMonth() === month; }).sort((a,b) => a[0].localeCompare(b[0]));
-    if(monthTasks.length === 0){ calendarEventsEl.innerHTML = '<div class="empty-state" style="margin:0;">No deadlines this month</div>'; } else { calendarEventsEl.innerHTML = monthTasks.map(([date, items]) => { const displayDate = new Date(date + 'T00:00').toLocaleDateString(undefined, { month:'short', day:'numeric' }); return items.map(task => `<div class="calendar-event"><strong>${escapeHTML(task.name)}</strong><span>${displayDate}${task.time ? ' · ' + task.time : ''}</span></div>`).join(''); }).join(''); }
+    if(monthTasks.length === 0){ calendarEventsEl.innerHTML = '<div class="empty-state" style="margin:0;">No deadlines this month</div>'; } else { calendarEventsEl.innerHTML = monthTasks.map(([date, items]) => { const displayDate = new Date(date + 'T00:00').toLocaleDateString(undefined, { month:'short', day:'numeric' }); return items.map(task => `<div class="calendar-event"><strong>${escapeHTML(task.subtask)}</strong><span>${displayDate}</span></div>`).join(''); }).join(''); }
   }
 
   if(calendarPrevBtn) calendarPrevBtn.addEventListener('click', () => { calendarView.setMonth(calendarView.getMonth() - 1); renderCalendar(); });
@@ -842,15 +827,28 @@
       card.addEventListener('dragstart', e => { activeDragId = card.dataset.id; card.classList.add('dragging'); e.dataTransfer.setData('text/plain', card.dataset.id); e.dataTransfer.effectAllowed = 'move'; });
       card.addEventListener('dragend', () => { card.classList.remove('dragging'); activeDragId = null; });
     });
+    
     document.querySelectorAll('.task-checkbox').forEach(checkbox => {
-      checkbox.addEventListener('change', () => {
-        const task = tasks.find(t => t.id === checkbox.dataset.id);
-        if(task){ task.completed = checkbox.checked; saveTasks(); render(); }
+      checkbox.addEventListener('change', async () => {
+        if (saveStatusEl) saveStatusEl.textContent = "Updating... ☁️";
+        const idNum = parseInt(checkbox.dataset.id);
+        const { error } = await _supabase
+          .from('tasks')
+          .update({ is_completed: checkbox.checked })
+          .eq('id', idNum);
+        if(!error) await fetchCloudTasks();
       });
     });
+
     document.querySelectorAll('.edit-btn').forEach(btn => { btn.addEventListener('click', () => openEditModal(btn.dataset.id)); });
+    
     document.querySelectorAll('.del-btn').forEach(btn => {
-      btn.addEventListener('click', () => { tasks = tasks.filter(t => t.id !== btn.dataset.id); saveTasks(); render(); });
+      btn.addEventListener('click', async () => {
+        if (saveStatusEl) saveStatusEl.textContent = "Deleting... ☁️";
+        const idNum = parseInt(btn.dataset.id);
+        const { error } = await _supabase.from('tasks').delete().eq('id', idNum);
+        if(!error) await fetchCloudTasks();
+      });
     });
   }
 
@@ -858,25 +856,31 @@
   if(inboxSection){
     inboxSection.addEventListener('dragover', e => { e.preventDefault(); inboxSection.style.boxShadow = 'var(--clay-in)'; });
     inboxSection.addEventListener('dragleave', () => { inboxSection.style.boxShadow = 'var(--clay-out)'; });
-    inboxSection.addEventListener('drop', e => {
-      e.preventDefault(); inboxSection.style.boxShadow = 'var(--clay-out)'; const id = e.dataTransfer.getData('text/plain') || activeDragId; const task = tasks.find(t => t.id === id);
-      if(task){ task.quadrant = 'inbox'; saveTasks(); render(); }
+    inboxSection.addEventListener('drop', async e => {
+      e.preventDefault(); inboxSection.style.boxShadow = 'var(--clay-out)'; 
+      const id = e.dataTransfer.getData('text/plain') || activeDragId;
+      if (saveStatusEl) saveStatusEl.textContent = "Moving... ☁️";
+      const { error } = await _supabase.from('tasks').update({ category: 'inbox' }).eq('id', parseInt(id));
+      if(!error) await fetchCloudTasks();
     });
   }
 
   document.querySelectorAll('.quadrant').forEach(q => {
     q.addEventListener('dragover', e => { e.preventDefault(); q.classList.add('drag-over'); });
     q.addEventListener('dragleave', () => q.classList.remove('drag-over'));
-    q.addEventListener('drop', e => {
-      e.preventDefault(); q.classList.remove('drag-over'); const id = e.dataTransfer.getData('text/plain') || activeDragId; const task = tasks.find(t => t.id === id);
-      if(task){ task.quadrant = q.dataset.quadrant; saveTasks(); render(); }
+    q.addEventListener('drop', async e => {
+      e.preventDefault(); q.classList.remove('drag-over'); 
+      const id = e.dataTransfer.getData('text/plain') || activeDragId;
+      if (saveStatusEl) saveStatusEl.textContent = "Moving... ☁️";
+      const { error } = await _supabase.from('tasks').update({ category: q.dataset.quadrant }).eq('id', parseInt(id));
+      if(!error) await fetchCloudTasks();
     });
   });
 
   const overlay = document.getElementById('overlay'); const form = document.getElementById('taskForm'); const modalTitle = document.getElementById('modalTitle'); const swatchPicker = document.getElementById('swatchPicker'); const deleteBtn = document.getElementById('deleteBtn');
 
-  function openAddModal(defaultQuadrant){ editingId = null; intendedQuadrant = defaultQuadrant || 'do'; modalTitle.textContent = 'Add a new task PEANUT!'; form.reset(); document.getElementById('taskId').value = ''; setActiveSwatch(defaultQuadrant || 'do'); deleteBtn.style.display = 'none'; overlay.classList.add('open'); document.getElementById('taskName').focus(); }
-  function openEditModal(id){ const task = tasks.find(t => t.id === id); if(!task) return; editingId = id; modalTitle.textContent = 'Edit studio task'; document.getElementById('taskId').value = task.id; document.getElementById('taskName').value = task.name; document.getElementById('taskSubtask').value = task.subtask || ''; document.getElementById('taskDate').value = task.date || ''; document.getElementById('taskNotes').value = task.notes || ''; setActiveSwatch(task.quadrant); deleteBtn.style.display = 'block'; overlay.classList.add('open'); }
+  function openAddModal(defaultQuadrant){ editingId = null; intendedQuadrant = defaultQuadrant || 'do'; modalTitle.textContent = 'Add a new task PEANUT!'; form.reset(); document.getElementById('taskId').value = ''; setActiveSwatch(defaultQuadrant || 'do'); deleteBtn.style.display = 'none'; overlay.classList.add('open'); document.getElementById('taskSubtask').focus(); }
+  function openEditModal(id){ const task = tasks.find(t => t.id == id); if(!task) return; editingId = id; modalTitle.textContent = 'Edit studio task'; document.getElementById('taskId').value = task.id; document.getElementById('taskName').value = task.name; document.getElementById('taskSubtask').value = task.subtask || ''; document.getElementById('taskDate').value = task.date || ''; document.getElementById('taskNotes').value = task.notes || ''; setActiveSwatch(task.quadrant); deleteBtn.style.display = 'block'; overlay.classList.add('open'); }
   function closeModal(){ overlay.classList.remove('open'); editingId = null; }
   function setActiveSwatch(q){ swatchPicker.querySelectorAll('.swatch').forEach(sw => { sw.classList.toggle('active', sw.dataset.quadrant === q); }); }
 
@@ -886,14 +890,54 @@
   document.getElementById('cancelBtn').addEventListener('click', closeModal);
   overlay.addEventListener('click', e => { if(e.target === overlay) closeModal(); });
 
-  deleteBtn.addEventListener('click', () => { if(editingId){ tasks = tasks.filter(t => t.id !== editingId); saveTasks(); render(); } closeModal(); });
+  deleteBtn.addEventListener('click', async () => { 
+    if(editingId){ 
+      if (saveStatusEl) saveStatusEl.textContent = "Deleting... ☁️";
+      const { error } = await _supabase.from('tasks').delete().eq('id', parseInt(editingId));
+      if(!error) await fetchCloudTasks();
+    } 
+    closeModal(); 
+  });
 
-  form.addEventListener('submit', e => {
-    e.preventDefault(); const activeSwatch = swatchPicker.querySelector('.swatch.active'); const quadrant = activeSwatch ? activeSwatch.dataset.quadrant : intendedQuadrant;
-    const data = { name: document.getElementById('taskName').value.trim(), subtask: document.getElementById('taskSubtask').value.trim(), date: document.getElementById('taskDate').value, notes: document.getElementById('taskNotes').value.trim(), quadrant: quadrant, completed: false };
-    if(!data.name) return;
-    if(editingId){ const task = tasks.find(t => t.id === editingId); Object.assign(task, data); }else{ tasks.push(Object.assign({ id: uid() }, data)); }
-    saveTasks(); closeModal(); render();
+  form.addEventListener('submit', async e => {
+    e.preventDefault(); 
+    const activeSwatch = swatchPicker.querySelector('.swatch.active'); 
+    const quadrant = activeSwatch ? activeSwatch.dataset.quadrant : intendedQuadrant;
+    
+    const subtaskVal = document.getElementById('taskSubtask').value.trim();
+    const nameVal = document.getElementById('taskName').value.trim();
+    const notesVal = document.getElementById('taskNotes').value.trim();
+    const dateVal = document.getElementById('taskDate').value || null;
+    
+    // Package description and optional additional notes cleanly into the single text column
+    const descriptionCombined = notesVal ? `${nameVal}||NOTES||${notesVal}` : nameVal;
+
+    if (saveStatusEl) saveStatusEl.textContent = "Saving to Cloud... ☁️";
+
+    if(editingId){ 
+      const { error } = await _supabase
+        .from('tasks')
+        .update({
+          title: subtaskVal,
+          description: descriptionCombined,
+          category: quadrant,
+          due_date: dateVal
+        })
+        .eq('id', parseInt(editingId));
+    } else { 
+      const { error } = await _supabase
+        .from('tasks')
+        .insert([{
+          title: subtaskVal,
+          description: descriptionCombined,
+          category: quadrant,
+          due_date: dateVal,
+          is_completed: false
+        }]);
+    }
+    
+    await fetchCloudTasks();
+    closeModal();
   });
 
   document.addEventListener('keydown', e => { if(e.key === 'Escape' && overlay.classList.contains('open')) closeModal(); });
