@@ -237,7 +237,7 @@
     font-family:'Lato', sans-serif;
   }
 
-  /* ---------- Matrix grid ---------- */
+  /* ---------- Matrix grid & Completed section ---------- */
   .matrix-container {
     display: flex;
     flex-direction: column;
@@ -348,44 +348,50 @@
 
   /* ---------- Tasks Completed Section ---------- */
   .completed-section {
+    grid-column: 2;
     background: var(--surface);
-    border-radius: 28px;
+    border-radius: 24px;
     box-shadow: var(--clay-out);
-    padding: 18px 18px 14px;
+    padding: 14px 18px;
     display: flex;
     flex-direction: column;
-    border: 1px solid rgba(133, 52, 219, 0.15);
+    position: relative;
+    border: 2px solid transparent;
+    background-image: linear-gradient(var(--surface), var(--surface)), linear-gradient(135deg, var(--fuchsia-soft), var(--coral-soft));
+    background-origin: border-box;
+    background-clip: padding-box, border-box;
   }
   .completed-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 12px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(133, 52, 219, 0.12);
   }
   .completed-title {
     font-family: 'Lato', sans-serif;
     font-weight: 700;
-    font-size: 16px;
+    font-size: 15px;
     margin: 0;
-    color: var(--ink-soft);
+    color: var(--fuchsia);
     display: inline-flex;
     align-items: center;
     gap: 8px;
   }
   .completed-list {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: 12px;
-    max-height: 240px;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+    max-height: 200px;
     overflow-y: auto;
   }
   .task.completed {
-    opacity: 0.7;
+    opacity: 0.75;
     background: var(--bg-1) !important;
     color: var(--ink-soft) !important;
     box-shadow: var(--clay-in);
+    padding: 10px 12px;
   }
   .task.completed .task-name, .task.completed .task-subtask {
     text-decoration: line-through;
@@ -394,7 +400,7 @@
 
   /* ---------- Calendar section ---------- */
   .calendar-section{
-    margin-top:18px;
+    margin-top:0;
     background:var(--coral-soft);
     border-radius:28px;
     box-shadow:var(--clay-out);
@@ -590,7 +596,7 @@
   .btn-primary:active{ transform: scale(0.98); }
   .btn-danger{ background:var(--surface); color:var(--fuchsia); }
 
-  @media (max-width: 1024px){ .content-wrapper{ grid-template-columns: 1fr; } .inbox-section{ min-height:auto; } }
+  @media (max-width: 1024px){ .content-wrapper{ grid-template-columns: 1fr; } .inbox-section{ min-height:auto; } .completed-section { grid-column: 1; } }
   @media (max-width: 860px){ body{ padding:20px 16px 90px; } .matrix{ grid-template-columns:1fr; } .board-wrap{ grid-template-columns: 0 1fr; } .axis-y{ display:none; } .stats{ flex-wrap:wrap; } .progress-bar{ width:150px; } }
   ::-webkit-scrollbar{ width:6px; } ::-webkit-scrollbar-thumb{ background:rgba(58,44,57,0.15); border-radius:8px; }
 </style>
@@ -622,9 +628,9 @@
       <div class="inbox-list" id="inbox-list"></div>
     </div>
 
-    <div class="matrix-container">
-      <div class="board-wrap">
-        <div class="axis-y"><span></span><span></span></div>
+    <div class="board-wrap">
+      <div class="axis-y"><span></span><span></span></div>
+      <div class="matrix-container" style="grid-column: 2;">
         <div class="matrix" id="matrix">
           <div class="quadrant q-do" data-quadrant="do">
             <div class="q-head">
@@ -654,16 +660,16 @@
             <div class="q-list" id="list-schedule"></div>
           </div>
         </div>
-        <div class="axis-x"><span></span><span></span></div>
-      </div>
 
-      <!-- NEW: Tasks Completed Section -->
-      <div class="completed-section">
-        <div class="completed-head">
-          <h3 class="completed-title">🎉 Tasks Completed</h3>
+        <!-- NEW: Tasks Completed Section inline under matrix grid -->
+        <div class="completed-section">
+          <div class="completed-head">
+            <h3 class="completed-title">🎉 Tasks Completed</h3>
+          </div>
+          <div class="completed-list" id="completed-list"></div>
         </div>
-        <div class="completed-list" id="completed-list"></div>
       </div>
+      <div class="axis-x"><span></span><span></span></div>
     </div>
 
     <div class="calendar-section">
