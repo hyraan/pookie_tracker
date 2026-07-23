@@ -143,7 +143,7 @@
   .board-wrap{
     display:grid;
     grid-template-columns: 46px 1fr;
-    grid-template-rows: 1fr 46px;
+    grid-template-rows: 1fr auto;
     gap:10px;
     width:100%;
   }
@@ -238,6 +238,11 @@
   }
 
   /* ---------- Matrix grid ---------- */
+  .matrix-container {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
   .matrix{
     grid-row:1;
     grid-column:2;
@@ -339,6 +344,52 @@
     border-radius:18px;
     padding:18px;
     font-family:'Lato', sans-serif;
+  }
+
+  /* ---------- Tasks Completed Section ---------- */
+  .completed-section {
+    background: var(--surface);
+    border-radius: 28px;
+    box-shadow: var(--clay-out);
+    padding: 18px 18px 14px;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid rgba(133, 52, 219, 0.15);
+  }
+  .completed-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  }
+  .completed-title {
+    font-family: 'Lato', sans-serif;
+    font-weight: 700;
+    font-size: 16px;
+    margin: 0;
+    color: var(--ink-soft);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .completed-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+    max-height: 240px;
+    overflow-y: auto;
+  }
+  .task.completed {
+    opacity: 0.7;
+    background: var(--bg-1) !important;
+    color: var(--ink-soft) !important;
+    box-shadow: var(--clay-in);
+  }
+  .task.completed .task-name, .task.completed .task-subtask {
+    text-decoration: line-through;
+    color: var(--ink-soft) !important;
   }
 
   /* ---------- Calendar section ---------- */
@@ -489,6 +540,7 @@
     cursor:pointer; font-size:13px; padding:2px 4px; border-radius:6px;
   }
   .task.q-not-urgent .task-actions button { color: rgba(0, 0, 0, 0.5); }
+  .task.completed .task-actions button { color: var(--ink-soft); }
   .task-actions button:hover{ color:#ffffff; background:rgba(255,255,255,0.15); }
   .task.q-not-urgent .task-actions button:hover { color:#000000; background:rgba(0,0,0,0.08); }
   .task-notes{ font-size:12px; color:rgba(255, 255, 255, 0.8); margin:2px 0 0; line-height:1.4; }
@@ -570,38 +622,48 @@
       <div class="inbox-list" id="inbox-list"></div>
     </div>
 
-    <div class="board-wrap">
-      <div class="axis-y"><span></span><span></span></div>
-      <div class="matrix" id="matrix">
-        <div class="quadrant q-do" data-quadrant="do">
-          <div class="q-head">
-            <div class="q-title-wrap">
-              <div class="q-icon">⚡</div>
-              <div>
-                <p class="q-title">URGENTTTTT!!!!</p>
-                <p class="q-sub">Darlinggg!!! Get these done sooonnn</p>
+    <div class="matrix-container">
+      <div class="board-wrap">
+        <div class="axis-y"><span></span><span></span></div>
+        <div class="matrix" id="matrix">
+          <div class="quadrant q-do" data-quadrant="do">
+            <div class="q-head">
+              <div class="q-title-wrap">
+                <div class="q-icon">⚡</div>
+                <div>
+                  <p class="q-title">URGENTTTTT!!!!</p>
+                  <p class="q-sub">Darlinggg!!! Get these done sooonnn</p>
+                </div>
               </div>
+              <button class="q-add" data-quadrant="do" title="Add task">+</button>
             </div>
-            <button class="q-add" data-quadrant="do" title="Add task">+</button>
+            <div class="q-list" id="list-do"></div>
           </div>
-          <div class="q-list" id="list-do"></div>
-        </div>
 
-        <div class="quadrant q-schedule" data-quadrant="schedule">
-          <div class="q-head">
-            <div class="q-title-wrap">
-              <div class="q-icon">📅</div>
-              <div>
-                <p class="q-title">Not So Urgent</p>
-                <p class="q-sub">Pookie. Don't forget to do these okey!</p>
+          <div class="quadrant q-schedule" data-quadrant="schedule">
+            <div class="q-head">
+              <div class="q-title-wrap">
+                <div class="q-icon">📅</div>
+                <div>
+                  <p class="q-title">Not So Urgent</p>
+                  <p class="q-sub">Pookie. Don't forget to do these okey!</p>
+                </div>
               </div>
+              <button class="q-add" data-quadrant="schedule" title="Add task">+</button>
             </div>
-            <button class="q-add" data-quadrant="schedule" title="Add task">+</button>
+            <div class="q-list" id="list-schedule"></div>
           </div>
-          <div class="q-list" id="list-schedule"></div>
         </div>
+        <div class="axis-x"><span></span><span></span></div>
       </div>
-      <div class="axis-x"><span></span><span></span></div>
+
+      <!-- NEW: Tasks Completed Section -->
+      <div class="completed-section">
+        <div class="completed-head">
+          <h3 class="completed-title">🎉 Tasks Completed</h3>
+        </div>
+        <div class="completed-list" id="completed-list"></div>
+      </div>
     </div>
 
     <div class="calendar-section">
@@ -678,11 +740,9 @@
 
   async function init() {
     await fetchCloudTasks();
-    // Live update tracking from other browsers every 5 seconds
     setInterval(fetchCloudTasks, 5000);
   }
 
-  // Fetch tasks out of the database table
   async function fetchCloudTasks() {
     try {
       const { data, error } = await _supabase
@@ -692,7 +752,6 @@
 
       if (error) throw error;
 
-      // Transform db table schema fields back to local application keys
       tasks = data.map(t => ({
         id: t.id,
         subtask: t.title,
@@ -703,7 +762,6 @@
         notes: t.description ? "" : "" 
       }));
 
-      // Hack to extract the optional custom notes if embedded inside description text safely
       tasks.forEach((t, idx) => {
         if(data[idx].description && data[idx].description.includes("||NOTES||")) {
           const parts = data[idx].description.split("||NOTES||");
@@ -728,18 +786,20 @@
   function deadlineStatus(task){ const dl = getDeadline(task); if(!dl) return 'none'; const now = new Date(); if(dl < now) return 'overdue'; const oneDay = 24*60*60*1000; if(dl - now < oneDay) return 'today'; return 'upcoming'; }
 
   function render(){
+    // 1. Inbox Section Filter
     const inboxList = document.getElementById('inbox-list');
-    const inboxItems = tasks.filter(t => !t.quadrant || t.quadrant === 'inbox');
+    const inboxItems = tasks.filter(t => (!t.quadrant || t.quadrant === 'inbox') && !t.completed);
     if(inboxItems.length === 0){
       inboxList.innerHTML = '<div class="inbox-empty">Good job sorting the tasks, Sunshine <3</div>';
     }else{
       inboxList.innerHTML = inboxItems.map(taskCardHTML).join('');
     }
 
+    // 2. Quadrants Matrix Filter
     QUADRANTS.forEach(q => {
       const list = document.getElementById('list-' + q);
       const items = tasks
-        .filter(t => t.quadrant === q)
+        .filter(t => t.quadrant === q && !t.completed)
         .sort((a,b) => {
           const da = getDeadline(a), db = getDeadline(b);
           if(!da && !db) return 0; if(!da) return 1; if(!db) return -1; return da - db;
@@ -752,6 +812,15 @@
       list.innerHTML = items.map(taskCardHTML).join('');
     });
 
+    // 3. Completed / Archived Tasks Render
+    const completedList = document.getElementById('completed-list');
+    const completedItems = tasks.filter(t => t.completed);
+    if(completedItems.length === 0) {
+      completedList.innerHTML = '<div class="empty-state" style="grid-column: 1 / -1;">No completed tasks yet. Finish a task to archive it here!</div>';
+    } else {
+      completedList.innerHTML = completedItems.map(taskCardHTML).join('');
+    }
+
     renderStats();
     renderCalendar();
     attachCardListeners();
@@ -762,12 +831,12 @@
     const badge = status === 'overdue' ? '<span class="badge">Overdue</span>' : '';
     const urgencyClass = (task.quadrant === 'schedule') ? 'q-not-urgent' : 'q-urgent';
     const taskClass = `task ${urgencyClass} ${task.completed ? 'completed' : ''}`;
-    const subtaskColor = (task.quadrant === 'schedule') ? '#1B1C2B' : '#ffffff';
+    const subtaskColor = task.completed ? 'var(--ink-soft)' : ((task.quadrant === 'schedule') ? '#1B1C2B' : '#ffffff');
     const taskName = task.name ? `<p class="task-name" style="margin:0 0 6px 0;">${escapeHTML(task.name)}</p>` : '';
     const subtaskName = task.subtask ? `<p class="task-subtask" style="font-weight:700;margin:0 0 0 0;color:${subtaskColor};">${escapeHTML(task.subtask)}</p>` : '';
 
     return `
-      <div class="${taskClass}" draggable="true" data-id="${task.id}">
+      <div class="${taskClass}" ${!task.completed ? 'draggable="true"' : ''} data-id="${task.id}">
         <div class="task-top">
           <div class="task-name-content">
             <input type="checkbox" class="task-checkbox" data-id="${task.id}" ${task.completed ? 'checked' : ''}>
@@ -776,7 +845,7 @@
             </div>
           </div>
           <div class="task-actions">
-            <button class="edit-btn" data-id="${task.id}" title="Edit">✎</button>
+            ${task.completed ? `<button class="unarchive-btn" data-id="${task.id}" title="Unarchive">↺</button>` : `<button class="edit-btn" data-id="${task.id}" title="Edit">✎</button>`}
             <button class="del-btn" data-id="${task.id}" title="Delete">✕</button>
           </div>
         </div>
@@ -790,7 +859,7 @@
   function escapeHTML(str){ const div = document.createElement('div'); div.textContent = str; return div.innerHTML; }
 
   function renderStats(){
-    const total = tasks.length; const overdue = tasks.filter(t => deadlineStatus(t) === 'overdue').length; const today = tasks.filter(t => deadlineStatus(t) === 'today').length; const completed = tasks.filter(t => t.completed).length; const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+    const total = tasks.length; const overdue = tasks.filter(t => !t.completed && deadlineStatus(t) === 'overdue').length; const today = tasks.filter(t => !t.completed && deadlineStatus(t) === 'today').length; const completed = tasks.filter(t => t.completed).length; const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
     const statsEl = document.getElementById('stats');
     statsEl.innerHTML = `
       <div class="stat-pill"><b>${total}</b> looks total</div>
@@ -802,7 +871,7 @@
 
   const calendarMonthEl = document.getElementById('calendarMonth'); const calendarGridEl = document.getElementById('calendarGrid'); const calendarEventsEl = document.getElementById('calendarEvents'); const calendarPrevBtn = document.getElementById('calendarPrev'); const calendarNextBtn = document.getElementById('calendarNext'); const calendarView = new Date(); calendarView.setDate(1);
   function pad(value){ return value.toString().padStart(2, '0'); }
-  function buildCalendarData(){ return tasks.filter(t => t.date).reduce((acc, task) => { acc[task.date] = acc[task.date] || []; acc[task.date].push(task); return acc; }, {}); }
+  function buildCalendarData(){ return tasks.filter(t => t.date && !t.completed).reduce((acc, task) => { acc[task.date] = acc[task.date] || []; acc[task.date].push(task); return acc; }, {}); }
 
   function renderCalendar(){
     if(!calendarMonthEl || !calendarGridEl || !calendarEventsEl) return; const year = calendarView.getFullYear(); const month = calendarView.getMonth(); calendarMonthEl.textContent = calendarView.toLocaleDateString(undefined, { month:'long', year:'numeric' });
@@ -823,7 +892,7 @@
   if(calendarNextBtn) calendarNextBtn.addEventListener('click', () => { calendarView.setMonth(calendarView.getMonth() + 1); renderCalendar(); });
 
   function attachCardListeners(){
-    document.querySelectorAll('.task').forEach(card => {
+    document.querySelectorAll('.task[draggable="true"]').forEach(card => {
       card.addEventListener('dragstart', e => { activeDragId = card.dataset.id; card.classList.add('dragging'); e.dataTransfer.setData('text/plain', card.dataset.id); e.dataTransfer.effectAllowed = 'move'; });
       card.addEventListener('dragend', () => { card.classList.remove('dragging'); activeDragId = null; });
     });
@@ -835,6 +904,18 @@
         const { error } = await _supabase
           .from('tasks')
           .update({ is_completed: checkbox.checked })
+          .eq('id', idNum);
+        if(!error) await fetchCloudTasks();
+      });
+    });
+
+    document.querySelectorAll('.unarchive-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (saveStatusEl) saveStatusEl.textContent = "Restoring... ☁️";
+        const idNum = parseInt(btn.dataset.id);
+        const { error } = await _supabase
+          .from('tasks')
+          .update({ is_completed: false })
           .eq('id', idNum);
         if(!error) await fetchCloudTasks();
       });
@@ -909,7 +990,6 @@
     const notesVal = document.getElementById('taskNotes').value.trim();
     const dateVal = document.getElementById('taskDate').value || null;
     
-    // Package description and optional additional notes cleanly into the single text column
     const descriptionCombined = notesVal ? `${nameVal}||NOTES||${notesVal}` : nameVal;
 
     if (saveStatusEl) saveStatusEl.textContent = "Saving to Cloud... ☁️";
